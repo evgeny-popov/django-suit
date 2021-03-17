@@ -2,8 +2,8 @@ from django.test import TestCase
 from suit.widgets import LinkedSelect, HTML5Input, EnclosedInput, \
     NumberInput, SuitDateWidget, SuitTimeWidget, SuitSplitDateTimeWidget, \
     AutosizedTextarea
-from django.utils.translation import ugettext as _
-from django.contrib.admin.templatetags.admin_static import static
+from django.utils.translation import gettext as _
+from django.templatetags.static import static
 from suit import utils
 
 django_version = utils.django_major_version()
@@ -127,7 +127,7 @@ class WidgetsTestCase(TestCase):
         if django_version < (1, 11):
             dwo = self.get_SuitDateWidget_output().replace('sdw', 'sdw_0')
             two = self.get_SuitTimeWidget_output().replace('sdw', 'sdw_1')
-            return '<div class="datetime">%s %s</div>' % (dwo, two)
+            return '<div class="datetime">{} {}</div>'.format(dwo, two)
         else:
             return '<div class="datetime"><input type="text" name="sdw_0" ' \
                    'class="vDateField input-small " size="10" placeholder="Date" ' \
@@ -163,5 +163,5 @@ class WidgetsTestCase(TestCase):
         txt = AutosizedTextarea()
         js_url = static('suit/js/jquery.autosize-min.js')
         self.assertHTMLEqual(str(txt.media),
-                             '<script type="text/javascript" src="%s"></script>'
+                             '<script src="%s"></script>'
                              % js_url)

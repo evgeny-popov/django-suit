@@ -6,11 +6,7 @@ from suit.templatetags.suit_list import paginator_number, paginator_info, \
 from suit.tests.mixins import UserTestCaseMixin, ModelsTestCaseMixin
 from suit.tests.models import Album, Book, test_app_label
 
-try:
-    from django.core.urlresolvers import reverse
-except ImportError:
-    # For Django >= 2.0
-    from django.urls import reverse
+from django.urls import reverse
 
 app_label = test_app_label()
 

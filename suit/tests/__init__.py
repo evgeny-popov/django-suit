@@ -15,11 +15,7 @@ from suit.tests.config import ConfigTestCase, ConfigWithModelsTestCase
 from suit.tests.widgets import WidgetsTestCase
 from suit.tests.utils import UtilsTestCase
 
-try:
-    # Django 1.7+
-    from django.test.runner import DiscoverRunner as DjangoTestSuiteRunner
-except ImportError:
-    from django.test.simple import DjangoTestSuiteRunner
+from django.test.runner import DiscoverRunner as DjangoTestSuiteRunner
 
 
 class NoDbTestRunner(DjangoTestSuiteRunner):

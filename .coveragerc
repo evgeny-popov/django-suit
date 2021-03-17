@@ -1,0 +1,12 @@
+[run]
+branch = 1
+cover_pylib = 0
+include = suit/*
+
+
+[report]
+omit =
+    */python?.?/*
+    */site-packages/*
+    */pypy/*
+    .tox

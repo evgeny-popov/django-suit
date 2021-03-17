@@ -40,7 +40,7 @@ class BookAdmin(admin.ModelAdmin):
                 'data-request': request}
 
     def suit_cell_attributes(self, obj, column):
-        return {'class': 'suit_cell_attr_class-%s-%s' % (column, obj.name),
+        return {'class': 'suit_cell_attr_class-{}-{}'.format(column, obj.name),
                 'data': obj.pk}
 
 

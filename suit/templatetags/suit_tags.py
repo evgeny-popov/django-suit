@@ -6,26 +6,14 @@ from django.template.defaulttags import NowNode
 from django.utils.safestring import mark_safe
 from suit.config import get_config
 from suit import utils
-
-try:
-    from django.core.urlresolvers import NoReverseMatch, reverse
-except ImportError:
-    from django.urls import NoReverseMatch, reverse
+from django.urls import NoReverseMatch, reverse
 
 django_version = utils.django_major_version()
 
-try:
-    # Django 1.9
-    from django.contrib.admin.utils import lookup_field
-except ImportError:
-    from django.contrib.admin.util import lookup_field
+from django.contrib.admin.utils import lookup_field
 
 register = template.Library()
-
-if django_version < (1, 9):
-    simple_tag = register.assignment_tag
-else:
-    simple_tag = register.simple_tag
+simple_tag = register.simple_tag
 
 
 @register.filter(name='suit_conf')
@@ -75,7 +63,7 @@ def field_contents_foreign_linked(admin_field):
         except NoReverseMatch:
             url = None
         if url:
-            displayed = "<a href='%s'>%s</a>" % (url, displayed)
+            displayed = "<a href='{}'>{}</a>".format(url, displayed)
     return mark_safe(displayed)
 
 
@@ -99,9 +87,9 @@ def suit_bc_value(*args):
 def admin_extra_filters(cl):
     """ Return the dict of used filters which is not included
     in list_filters form """
-    used_parameters = list(itertools.chain(*(s.used_parameters.keys()
+    used_parameters = list(itertools.chain(*(list(s.used_parameters.keys())
                                              for s in cl.filter_specs)))
-    return dict((k, v) for k, v in cl.params.items() if k not in used_parameters)
+    return {k: v for k, v in cl.params.items() if k not in used_parameters}
 
 
 @simple_tag
@@ -132,18 +120,3 @@ def django_version_gte(string):
 def str_to_version(string):
     return tuple([int(s) for s in string.split('.')])
 
-
-if django_version < (1, 9):
-    # Add empty tags to avoid Django template errors if < Django 1.9
-    @register.simple_tag
-    def add_preserved_filters(*args, **kwargs):
-        pass
-
-if django_version < (1, 5):
-    # Add admin_urlquote filter to support Django 1.4
-    from django.contrib.admin.util import quote
-
-
-    @register.filter
-    def admin_urlquote(value):
-        return quote(value)

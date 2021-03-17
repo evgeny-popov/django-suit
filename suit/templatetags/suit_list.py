@@ -1,5 +1,5 @@
 from copy import copy
-from inspect import getargspec
+from inspect import getfullargspec
 from django import template
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
@@ -8,19 +8,8 @@ from django.contrib.admin.views.main import ALL_VAR, PAGE_VAR
 from django.utils.html import escape
 from suit.compat import tpl_context_class
 
-try:
-    # Python 3.
-    from urllib.parse import parse_qs
-except ImportError:
-    # Python 2.5+
-    from urlparse import urlparse
 
-    try:
-        # Python 2.6+
-        from urlparse import parse_qs
-    except ImportError:
-        # Python <=2.5
-        from cgi import parse_qs
+from urllib.parse import parse_qs
 
 register = template.Library()
 
@@ -61,7 +50,7 @@ def paginator_info(cl):
         if paginator.count < entries_to:
             entries_to = paginator.count
 
-    return '%s - %s' % (entries_from, entries_to)
+    return '{} - {}'.format(entries_from, entries_to)
 
 
 @register.inclusion_tag('admin/pagination.html')
@@ -82,26 +71,26 @@ def pagination(cl):
         # If there are 10 or fewer pages, display links to every page.
         # Otherwise, do some fancy
         if paginator.num_pages <= 8:
-            page_range = range(paginator.num_pages)
+            page_range = list(range(paginator.num_pages))
         else:
             # Insert "smart" pagination links, so that there are always ON_ENDS
             # links at either end of the list of pages, and there are always
             # ON_EACH_SIDE links at either end of the "current page" link.
             page_range = []
             if page_num > (ON_EACH_SIDE + ON_ENDS):
-                page_range.extend(range(0, ON_EACH_SIDE - 1))
+                page_range.extend(list(range(0, ON_EACH_SIDE - 1)))
                 page_range.append(DOT)
-                page_range.extend(range(page_num - ON_EACH_SIDE, page_num + 1))
+                page_range.extend(list(range(page_num - ON_EACH_SIDE, page_num + 1)))
             else:
-                page_range.extend(range(0, page_num + 1))
+                page_range.extend(list(range(0, page_num + 1)))
             if page_num < (paginator.num_pages - ON_EACH_SIDE - ON_ENDS - 1):
                 page_range.extend(
-                    range(page_num + 1, page_num + ON_EACH_SIDE + 1))
+                    list(range(page_num + 1, page_num + ON_EACH_SIDE + 1)))
                 page_range.append(DOT)
                 page_range.extend(
-                    range(paginator.num_pages - ON_ENDS, paginator.num_pages))
+                    list(range(paginator.num_pages - ON_ENDS, paginator.num_pages)))
             else:
-                page_range.extend(range(page_num + 1, paginator.num_pages))
+                page_range.extend(list(range(page_num + 1, paginator.num_pages)))
 
     need_show_all_link = cl.can_show_all and not cl.show_all and cl.multi_page
     return {
@@ -147,7 +136,7 @@ def suit_list_filter_select(cl, spec):
                 choice['name'] = key
                 choice['val'] = value
             else:
-                choice['additional'] = '%s=%s' % (key, value)
+                choice['additional'] = '{}={}'.format(key, value)
             i += 1
 
     return tpl.render(tpl_context_class({
@@ -174,7 +163,7 @@ def headers_handler(result_headers, cl):
 
         pattern = 'class="'
         if pattern in header[attrib_key]:
-            replacement = '%s%s-column ' % (pattern, field_name)
+            replacement = '{}{}-column '.format(pattern, field_name)
             header[attrib_key] = mark_safe(
                 header[attrib_key].replace(pattern, replacement))
 
@@ -182,7 +171,7 @@ def headers_handler(result_headers, cl):
 
 
 def dict_to_attrs(attrs):
-    return mark_safe(' ' + ' '.join(['%s="%s"' % (k, v)
+    return mark_safe(' ' + ' '.join(['{}="{}"'.format(k, v)
                                      for k, v in attrs.items()]))
 
 
@@ -214,7 +203,7 @@ def result_row_attrs(context, cl, row_index):
     instance = cl.result_list[row_index]
 
     # Backwards compatibility for suit_row_attributes without request argument
-    args = getargspec(suit_row_attributes)
+    args = getfullargspec(suit_row_attributes)
     if 'request' in args[0]:
         new_attrs = suit_row_attributes(instance, context['request'])
     else:
@@ -265,7 +254,7 @@ def cells_handler(results, cl):
             # Merge 'class' attribute
             if class_pattern in item.split('>')[0] and 'class' in attrs:
                 css_class = attrs.pop('class')
-                replacement = '%s%s ' % (class_pattern, css_class)
+                replacement = '{}{} '.format(class_pattern, css_class)
                 result[col] = mark_safe(
                     item.replace(class_pattern, replacement))
 
