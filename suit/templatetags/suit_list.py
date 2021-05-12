@@ -1,15 +1,28 @@
 from copy import copy
 from inspect import getfullargspec
+
+import django
+
 from django import template
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
 from django.contrib.admin.templatetags.admin_list import result_list
 from django.contrib.admin.views.main import ALL_VAR, PAGE_VAR
 from django.utils.html import escape
+from django.utils.html import format_html
 from suit.compat import tpl_context_class
 
 
 from urllib.parse import parse_qs
+
+# Starting with Django 3.2, the pagination is 1-based instead of 0-based.
+# I've taken the implementations (latest at the time of release 3.2)
+# from https://github.com/django/django/blob/main/django/contrib/admin/templatetags/admin_list.py
+# to use in the implementations below. Older versions of django will use the old implementation and will keep working.
+# There are corresponding CSS changes in suit/static/suit/less/ui/pagination.less
+# to fix the pagination, as the code below generates different html objects.
+USE_NEW_DJANGO_ADMIN_PAGINATION = django.get_version() >= '3.2'
+
 
 register = template.Library()
 
@@ -19,24 +32,53 @@ DOT = '.'
 @register.simple_tag
 def paginator_number(cl, i):
     """
-    Generates an individual page index link in a paginated list.
+    Generate an individual page index link in a paginated list.
     """
-    if i == DOT:
-        return mark_safe(
-                '<li class="disabled"><a href="#" onclick="return false;">..'
-                '.</a></li>')
+    if not USE_NEW_DJANGO_ADMIN_PAGINATION:
+        if i == DOT:
+            return mark_safe(
+                    '<li class="disabled"><a href="#" onclick="return false;">..'
+                    '.</a></li>')
+        elif i == cl.page_num:
+            return mark_safe(
+                '<li class="active"><a href="">%d</a></li> ' % (i + 1))
+        else:
+            return mark_safe('<li><a href="%s"%s>%d</a></li> ' % (
+                escape(cl.get_query_string({PAGE_VAR: i})),
+                (i == cl.paginator.num_pages - 1 and ' class="end"' or ''),
+                i + 1))
+
+    if i == cl.paginator.ELLIPSIS:
+        return format_html('<span class="disabled">{}</span> ', cl.paginator.ELLIPSIS)
     elif i == cl.page_num:
-        return mark_safe(
-            '<li class="active"><a href="">%d</a></li> ' % (i + 1))
+        return format_html('<span class="this-page">{}</span> ', i)
     else:
-        return mark_safe('<li><a href="%s"%s>%d</a></li> ' % (
-            escape(cl.get_query_string({PAGE_VAR: i})),
-            (i == cl.paginator.num_pages - 1 and ' class="end"' or ''),
-            i + 1))
+        return format_html(
+            '<a href="{}"{}>{}</a> ',
+            cl.get_query_string({PAGE_VAR: i}),
+            mark_safe(' class="end"' if i == cl.paginator.num_pages else ''),
+            i,
+        )
 
 
 @register.simple_tag
 def paginator_info(cl):
+    if not USE_NEW_DJANGO_ADMIN_PAGINATION:
+        paginator = cl.paginator
+
+        # If we show all rows of list (without pagination)
+        if cl.show_all and cl.can_show_all:
+            entries_from = 1 if paginator.count > 0 else 0
+            entries_to = paginator.count
+        else:
+            entries_from = (
+                (paginator.per_page * cl.page_num) + 1) if paginator.count > 0 else 0
+            entries_to = entries_from - 1 + paginator.per_page
+            if paginator.count < entries_to:
+                entries_to = paginator.count
+
+        return '%s - %s' % (entries_from, entries_to)
+
     paginator = cl.paginator
 
     # If we show all rows of list (without pagination)
@@ -44,60 +86,72 @@ def paginator_info(cl):
         entries_from = 1 if paginator.count > 0 else 0
         entries_to = paginator.count
     else:
-        entries_from = (
-            (paginator.per_page * cl.page_num) + 1) if paginator.count > 0 else 0
+        entries_from = ((paginator.per_page * (cl.page_num - 1)) + 1) if paginator.count > 0 else 0
         entries_to = entries_from - 1 + paginator.per_page
         if paginator.count < entries_to:
             entries_to = paginator.count
 
-    return '{} - {}'.format(entries_from, entries_to)
+    return '%s - %s' % (entries_from, entries_to)
 
 
 @register.inclusion_tag('admin/pagination.html')
 def pagination(cl):
     """
-    Generates the series of links to the pages in a paginated list.
+    Generate the series of links to the pages in a paginated list.
     """
-    paginator, page_num = cl.paginator, cl.page_num
+    if not USE_NEW_DJANGO_ADMIN_PAGINATION:
+        paginator, page_num = cl.paginator, cl.page_num
 
-    pagination_required = (not cl.show_all or not cl.can_show_all) \
-        and cl.multi_page
-    if not pagination_required:
-        page_range = []
-    else:
-        ON_EACH_SIDE = 3
-        ON_ENDS = 2
-
-        # If there are 10 or fewer pages, display links to every page.
-        # Otherwise, do some fancy
-        if paginator.num_pages <= 8:
-            page_range = list(range(paginator.num_pages))
-        else:
-            # Insert "smart" pagination links, so that there are always ON_ENDS
-            # links at either end of the list of pages, and there are always
-            # ON_EACH_SIDE links at either end of the "current page" link.
+        pagination_required = (not cl.show_all or not cl.can_show_all) \
+            and cl.multi_page
+        if not pagination_required:
             page_range = []
-            if page_num > (ON_EACH_SIDE + ON_ENDS):
-                page_range.extend(list(range(0, ON_EACH_SIDE - 1)))
-                page_range.append(DOT)
-                page_range.extend(list(range(page_num - ON_EACH_SIDE, page_num + 1)))
-            else:
-                page_range.extend(list(range(0, page_num + 1)))
-            if page_num < (paginator.num_pages - ON_EACH_SIDE - ON_ENDS - 1):
-                page_range.extend(
-                    list(range(page_num + 1, page_num + ON_EACH_SIDE + 1)))
-                page_range.append(DOT)
-                page_range.extend(
-                    list(range(paginator.num_pages - ON_ENDS, paginator.num_pages)))
-            else:
-                page_range.extend(list(range(page_num + 1, paginator.num_pages)))
+        else:
+            ON_EACH_SIDE = 3
+            ON_ENDS = 2
 
+            # If there are 10 or fewer pages, display links to every page.
+            # Otherwise, do some fancy
+            if paginator.num_pages <= 8:
+                page_range = range(paginator.num_pages)
+            else:
+                # Insert "smart" pagination links, so that there are always ON_ENDS
+                # links at either end of the list of pages, and there are always
+                # ON_EACH_SIDE links at either end of the "current page" link.
+                page_range = []
+                if page_num > (ON_EACH_SIDE + ON_ENDS):
+                    page_range.extend(range(0, ON_EACH_SIDE - 1))
+                    page_range.append(DOT)
+                    page_range.extend(range(page_num - ON_EACH_SIDE, page_num + 1))
+                else:
+                    page_range.extend(range(0, page_num + 1))
+                if page_num < (paginator.num_pages - ON_EACH_SIDE - ON_ENDS - 1):
+                    page_range.extend(
+                        range(page_num + 1, page_num + ON_EACH_SIDE + 1))
+                    page_range.append(DOT)
+                    page_range.extend(
+                        range(paginator.num_pages - ON_ENDS, paginator.num_pages))
+                else:
+                    page_range.extend(range(page_num + 1, paginator.num_pages))
+
+        need_show_all_link = cl.can_show_all and not cl.show_all and cl.multi_page
+        return {
+            'cl': cl,
+            'pagination_required': pagination_required,
+            'show_all_url': need_show_all_link and cl.get_query_string(
+                {ALL_VAR: ''}),
+            'page_range': page_range,
+            'ALL_VAR': ALL_VAR,
+            '1': 1,
+        }
+
+    pagination_required = (not cl.show_all or not cl.can_show_all) and cl.multi_page
+    page_range = cl.paginator.get_elided_page_range(cl.page_num) if pagination_required else []
     need_show_all_link = cl.can_show_all and not cl.show_all and cl.multi_page
     return {
         'cl': cl,
         'pagination_required': pagination_required,
-        'show_all_url': need_show_all_link and cl.get_query_string(
-            {ALL_VAR: ''}),
+        'show_all_url': need_show_all_link and cl.get_query_string({ALL_VAR: ''}),
         'page_range': page_range,
         'ALL_VAR': ALL_VAR,
         '1': 1,
@@ -136,7 +190,7 @@ def suit_list_filter_select(cl, spec):
                 choice['name'] = key
                 choice['val'] = value
             else:
-                choice['additional'] = '{}={}'.format(key, value)
+                choice['additional'] = '%s=%s' % (key, value)
             i += 1
 
     return tpl.render(tpl_context_class({
@@ -163,7 +217,7 @@ def headers_handler(result_headers, cl):
 
         pattern = 'class="'
         if pattern in header[attrib_key]:
-            replacement = '{}{}-column '.format(pattern, field_name)
+            replacement = '%s%s-column ' % (pattern, field_name)
             header[attrib_key] = mark_safe(
                 header[attrib_key].replace(pattern, replacement))
 
@@ -171,7 +225,7 @@ def headers_handler(result_headers, cl):
 
 
 def dict_to_attrs(attrs):
-    return mark_safe(' ' + ' '.join(['{}="{}"'.format(k, v)
+    return mark_safe(' ' + ' '.join(['%s="%s"' % (k, v)
                                      for k, v in attrs.items()]))
 
 
@@ -179,7 +233,6 @@ def dict_to_attrs(attrs):
 def result_list_with_context(context, cl):
     """
     Wraps Djangos default result_list to ammend the context with the request.
-
     This gives us access to the request in change_list_results.
     """
     res = result_list(cl)
@@ -254,7 +307,7 @@ def cells_handler(results, cl):
             # Merge 'class' attribute
             if class_pattern in item.split('>')[0] and 'class' in attrs:
                 css_class = attrs.pop('class')
-                replacement = '{}{} '.format(class_pattern, css_class)
+                replacement = '%s%s ' % (class_pattern, css_class)
                 result[col] = mark_safe(
                     item.replace(class_pattern, replacement))
 
